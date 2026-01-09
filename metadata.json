@@ -1,0 +1,5 @@
+{
+  "name": "AI 다국어 번역기",
+  "description": "한국어 텍스트를 21개 언어로 정확하게 번역하여 엑셀 호환 JSON 형식으로 변환하는 전문 번역 도구입니다.",
+  "requestFramePermissions": []
+}
