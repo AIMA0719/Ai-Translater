@@ -6,9 +6,39 @@ const BASE_DELAY = 2000; // 2 seconds
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Helper to safely get the API key from various environment configurations
+const getApiKey = (): string | undefined => {
+  // 1. Check for Vite environment variable (Most likely for Vercel + Vite)
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_KEY) {
+    // @ts-ignore
+    return import.meta.env.VITE_API_KEY;
+  }
+
+  // 2. Check for Next.js public variable
+  if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_KEY) {
+    return process.env.NEXT_PUBLIC_API_KEY;
+  }
+
+  // 3. Check for Create React App variable
+  if (typeof process !== 'undefined' && process.env?.REACT_APP_API_KEY) {
+    return process.env.REACT_APP_API_KEY;
+  }
+
+  // 4. Fallback to standard process.env (Node.js / Custom Build)
+  // We check typeof process to avoid ReferenceError in pure browser environments
+  if (typeof process !== 'undefined' && process.env?.API_KEY) {
+    return process.env.API_KEY;
+  }
+
+  return undefined;
+};
+
 export const translateText = async (items: string[]): Promise<TranslationData[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing. Please check your environment configuration.");
+  const apiKey = getApiKey();
+
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please add 'VITE_API_KEY' to your Vercel Environment Variables.");
   }
 
   // Filter out empty items just in case
@@ -18,7 +48,7 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
     return [];
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   // Dynamically build properties for the schema based on LANGUAGE_KEYS
   const properties: Record<string, any> = {
