@@ -1,8 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TranslationData, LANGUAGE_KEYS } from "../types";
 
-const MAX_RETRIES = 3;
-const BASE_DELAY = 2000; // 2 seconds
+// Increased retries and delay to handle rate limits better
+const MAX_RETRIES = 5;
+const BASE_DELAY = 3000; // 3 seconds start delay
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -69,8 +70,9 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // Switched to 'gemini-3-flash-preview' for better rate limits and speed
       const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: `Translate the following list of Korean text items into the specified languages and generate a snake_case key for each.
         
         Input Items: ${JSON.stringify(validItems)}
@@ -114,7 +116,8 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
       const isServerOverloaded = error.toString().includes("503") || error.status === 503;
 
       if ((isRateLimit || isServerOverloaded) && attempt < MAX_RETRIES) {
-        const waitTime = BASE_DELAY * Math.pow(2, attempt - 1); // Exponential backoff: 2s, 4s, 8s...
+        // Exponential backoff with jitter: waitTime * 2^(attempt-1)
+        const waitTime = BASE_DELAY * Math.pow(2, attempt - 1); 
         console.log(`Retrying in ${waitTime}ms...`);
         await delay(waitTime);
         continue;
@@ -129,7 +132,7 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
   
   // Provide user-friendly error messages
   if (lastError.toString().includes("429")) {
-    throw new Error("현재 사용량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.");
+    throw new Error("사용량이 많아 요청이 제한되었습니다. 잠시 후(약 1분 뒤) 다시 시도해주세요.");
   }
   if (lastError.toString().includes("503")) {
     throw new Error("AI 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");

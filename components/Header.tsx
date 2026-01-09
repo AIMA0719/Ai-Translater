@@ -17,7 +17,7 @@ const Header: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[11px] font-bold border border-indigo-100 shadow-sm">
             <Sparkles className="w-3 h-3" />
-            <span>Gemini 3.0 Pro</span>
+            <span>Gemini 3.0 Flash</span>
           </div>
         </div>
       </div>
