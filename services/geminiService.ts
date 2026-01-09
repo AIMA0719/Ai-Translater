@@ -1,6 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TranslationData, LANGUAGE_KEYS } from "../types";
 
+const MAX_RETRIES = 3;
+const BASE_DELAY = 2000; // 2 seconds
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const translateText = async (items: string[]): Promise<TranslationData[]> => {
   if (!process.env.API_KEY) {
     throw new Error("API Key is missing. Please check your environment configuration.");
@@ -30,44 +35,75 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
     };
   });
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Translate the following list of Korean text items into the specified languages and generate a snake_case key for each.
-      
-      Input Items: ${JSON.stringify(validItems)}
-      
-      Requirements:
-      1. Output a JSON list where each object corresponds to exactly one input item.
-      2. Generate a "key" field: A concise, meaningful snake_case identifier based on the English translation (e.g. "hello_world").
-      3. The "Korean" field in the output must match the input item exactly.
-      4. Act as a professional native translator for each language.
-      5. Preserve the cultural context, nuance, and tone of the original Korean text.
-      6. Return ONLY the JSON data.
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: properties,
-            required: ["key", ...LANGUAGE_KEYS],
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: `Translate the following list of Korean text items into the specified languages and generate a snake_case key for each.
+        
+        Input Items: ${JSON.stringify(validItems)}
+        
+        Requirements:
+        1. Output a JSON list where each object corresponds to exactly one input item.
+        2. Generate a "key" field: A concise, meaningful snake_case identifier based on the English translation (e.g. "hello_world").
+        3. The "Korean" field in the output must match the input item exactly.
+        4. Act as a professional native translator for each language.
+        5. Preserve the cultural context, nuance, and tone of the original Korean text.
+        6. Return ONLY the JSON data.
+        `,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: properties,
+              required: ["key", ...LANGUAGE_KEYS],
+            },
           },
+          systemInstruction: "You are a specialized multi-lingual translation engine designed to export data for i18n/localization. Your translations must be accurate, culturally sensitive, and formatted perfectly as a JSON list. Treat each element in the input list as a separate translation task.",
         },
-        systemInstruction: "You are a specialized multi-lingual translation engine designed to export data for i18n/localization. Your translations must be accurate, culturally sensitive, and formatted perfectly as a JSON list. Treat each element in the input list as a separate translation task.",
-      },
-    });
+      });
 
-    const responseText = response.text;
-    if (!responseText) {
-      throw new Error("No response received from Gemini.");
+      const responseText = response.text;
+      if (!responseText) {
+        throw new Error("No response received from Gemini.");
+      }
+
+      const data = JSON.parse(responseText) as TranslationData[];
+      return data;
+
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`Translation attempt ${attempt} failed:`, error);
+
+      // Check for rate limit (429) or server overload (503)
+      const isRateLimit = error.toString().includes("429") || error.status === 429;
+      const isServerOverloaded = error.toString().includes("503") || error.status === 503;
+
+      if ((isRateLimit || isServerOverloaded) && attempt < MAX_RETRIES) {
+        const waitTime = BASE_DELAY * Math.pow(2, attempt - 1); // Exponential backoff: 2s, 4s, 8s...
+        console.log(`Retrying in ${waitTime}ms...`);
+        await delay(waitTime);
+        continue;
+      }
+      
+      // If it's not a retryable error, or we ran out of retries, break loop
+      break;
     }
-
-    const data = JSON.parse(responseText) as TranslationData[];
-    return data;
-  } catch (error) {
-    console.error("Translation error:", error);
-    throw error;
   }
+
+  console.error("Final translation error:", lastError);
+  
+  // Provide user-friendly error messages
+  if (lastError.toString().includes("429")) {
+    throw new Error("현재 사용량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.");
+  }
+  if (lastError.toString().includes("503")) {
+    throw new Error("AI 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");
+  }
+
+  throw lastError;
 };
