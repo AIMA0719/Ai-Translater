@@ -111,9 +111,16 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
       lastError = error;
       console.warn(`Translation attempt ${attempt} failed:`, error);
 
+      const errorMsg = error.toString();
+      
+      // Stop retrying immediately if the API key is invalid/expired
+      if (errorMsg.includes("API key expired") || errorMsg.includes("API_KEY_INVALID") || error.status === 400) {
+        break;
+      }
+
       // Check for rate limit (429) or server overload (503)
-      const isRateLimit = error.toString().includes("429") || error.status === 429;
-      const isServerOverloaded = error.toString().includes("503") || error.status === 503;
+      const isRateLimit = errorMsg.includes("429") || error.status === 429;
+      const isServerOverloaded = errorMsg.includes("503") || error.status === 503;
 
       if ((isRateLimit || isServerOverloaded) && attempt < MAX_RETRIES) {
         // Exponential backoff with jitter: waitTime * 2^(attempt-1)
@@ -129,12 +136,16 @@ export const translateText = async (items: string[]): Promise<TranslationData[]>
   }
 
   console.error("Final translation error:", lastError);
+  const errorMsg = lastError.toString();
   
   // Provide user-friendly error messages
-  if (lastError.toString().includes("429")) {
+  if (errorMsg.includes("API key expired") || errorMsg.includes("API_KEY_INVALID")) {
+     throw new Error("API Key가 만료되었거나 유효하지 않습니다. Google AI Studio에서 새 키를 발급받아 Vercel 환경 변수(VITE_API_KEY)를 업데이트하고 반드시 '재배포(Redeploy)' 해주세요.");
+  }
+  if (errorMsg.includes("429")) {
     throw new Error("사용량이 많아 요청이 제한되었습니다. 잠시 후(약 1분 뒤) 다시 시도해주세요.");
   }
-  if (lastError.toString().includes("503")) {
+  if (errorMsg.includes("503")) {
     throw new Error("AI 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");
   }
 
